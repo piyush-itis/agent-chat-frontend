@@ -122,22 +122,25 @@ function AssistantTurn({
   const hasText = rest.some((block) => block.type === "text" || block.type === "usage");
   const asking = liveRun?.waitpoint?.kind === "questions" && liveRun.waitpoint.status === "open";
   const pendingTool = pendingToolLabel(rest) ?? liveRun?.pendingTool;
+  const toolWork = Boolean(pendingTool) || hasTools;
+  const displayStatus =
+    liveRun?.status === "working" && !toolWork ? "thinking" : liveRun?.status;
   const streamingReply = Boolean(
     live &&
       liveRun &&
       !asking &&
-      isBusyStatus(liveRun.status) &&
+      isBusyStatus(displayStatus ?? "") &&
       !pendingTool &&
       rest.some((block) => block.type === "text" && block.text.trim() && !isNarratedCropTargetList(block.text)),
   );
-  const showActivity = live && !asking && liveRun && isBusyStatus(liveRun.status) && !streamingReply;
+  const showActivity = live && !asking && liveRun && isBusyStatus(displayStatus ?? "") && !streamingReply;
   const showThinking = !showActivity && Boolean(thinking);
 
   return (
     <article className="flex w-full flex-col items-start gap-4">
       {showActivity ? (
         <RunActivity
-          status={liveRun.status}
+          status={displayStatus}
           pendingTool={pendingToolLabel(rest) ?? liveRun.pendingTool}
           startedAt={liveRun.createdAt}
           thinking={thinking}
@@ -155,8 +158,11 @@ function AssistantTurn({
       ) : null}
       {!asking ? <ExtraGeneratedMedia blocks={rest} assets={assets} /> : null}
       {hasText && !asking ? renderBlocks(rest.filter((block) => block.type !== "text" || !isNarratedCropTargetList(block.text)), assets) : null}
-      {message.status === "failed" && liveRun?.errorSafeMessage ? (
-        <p className="text-sm text-destructive">{liveRun.errorSafeMessage}</p>
+      {message.status === "failed" &&
+      !rest.some((block) => block.type === "text" && block.text.trim()) ? (
+        <p className="text-sm text-destructive">
+          {liveRun?.errorSafeMessage ?? "This turn failed. Send a new message to continue."}
+        </p>
       ) : null}
     </article>
   );

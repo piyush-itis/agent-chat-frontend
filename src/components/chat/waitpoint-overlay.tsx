@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { formatMagicaCredits } from "@/lib/format-magica-credits";
 import { kindFromUrl } from "@/lib/generated-media";
 
 export function WaitpointOverlay({
@@ -51,7 +52,7 @@ export function WaitpointOverlay({
           <DialogDescription className="whitespace-pre-wrap">{waitpoint.payload.summary}</DialogDescription>
         </DialogHeader>
         {waitpoint.payload.estimateCredits ? (
-          <p className="text-sm">About {waitpoint.payload.estimateCredits} credits</p>
+          <p className="text-sm">About {formatMagicaCredits(waitpoint.payload.estimateCredits)}</p>
         ) : null}
         {waitpoint.payload.mediaUrls?.length ? (
           <ul className="flex flex-col gap-3">

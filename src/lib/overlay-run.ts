@@ -9,6 +9,8 @@ export type RunRealtimeMeta = {
   assistantOffset?: number;
 };
 
+const TERMINAL = new Set<RunStatus>(["complete", "failed", "cancelled"]);
+
 const STATUSES = new Set<RunStatus>([
   "queued",
   "thinking",
@@ -71,10 +73,11 @@ export function overlayRun(
     blocks = upsertBlock(blocks, { type: "text", text: assistantText });
   }
 
-  const status =
+  const metaStatus =
     input.meta?.status && STATUSES.has(input.meta.status as RunStatus)
       ? (input.meta.status as RunStatus)
-      : base.status;
+      : undefined;
+  const status = TERMINAL.has(base.status) ? base.status : (metaStatus ?? base.status);
 
   const assistant = base.assistant
     ? { ...base.assistant, blocks }

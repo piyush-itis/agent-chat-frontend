@@ -5,5 +5,7 @@ export function useCredits() {
   return useQuery({
     queryKey: ["credits"],
     queryFn: getCredits,
+    staleTime: 0,
+    refetchInterval: 8_000,
   });
 }

@@ -60,13 +60,15 @@ export function ChatWorkspace({ chatId }: { chatId?: string }) {
   }, [chatId]);
 
   useEffect(() => {
-    if (run.data && isActive(run.data.status) && pendingOutgoing?.chatId === chatId) {
+    if (run.data && pendingOutgoing?.chatId === chatId) {
       setPendingOutgoing(null);
     }
   }, [run.data, chatId, pendingOutgoing?.chatId, setPendingOutgoing]);
 
   useEffect(() => {
     if (run.data && !isActive(run.data.status)) {
+      setPendingRunId(null);
+      setSeedRealtime(undefined);
       void queryClient.invalidateQueries({ queryKey: ["chats", chatId, "messages"] });
       void queryClient.invalidateQueries({ queryKey: ["chats"] });
       void queryClient.invalidateQueries({ queryKey: ["credits"] });

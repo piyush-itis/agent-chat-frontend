@@ -10,7 +10,7 @@ vi.mock("sonner", () => ({
 }));
 
 vi.mock("@/hooks/use-credits", () => ({
-  useCredits: () => ({ data: { balance: 9922 } }),
+  useCredits: () => ({ data: { balance: 9_922_000 } }),
 }));
 
 afterEach(() => {
@@ -23,7 +23,7 @@ describe("TopBar", () => {
   it("renders Magica Auto and sparkle credits without a chat title", () => {
     render(<TopBar />);
     expect(screen.getByRole("button", { name: "OpenRouter Free" })).toHaveTextContent("Magica Auto");
-    expect(screen.getByText("9.92K")).toBeInTheDocument();
+    expect(screen.getByText("9.92M")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Files" })).toBeInTheDocument();
     expect(screen.queryByText("Task")).not.toBeInTheDocument();
   });

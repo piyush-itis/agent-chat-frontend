@@ -44,6 +44,30 @@ describe("MessageList thinking UI", () => {
     cleanup();
   });
 
+  it("does not label a chat-only reply as Working when overlay status is stale", () => {
+    render(
+      <MessageList
+        messages={[
+          { ...user, blocks: [{ type: "text", text: "say hi" }] },
+          {
+            ...assistant,
+            blocks: [{ type: "thinking", text: "Response Safety: safe or unsafe" }],
+          },
+        ]}
+        liveRun={{
+          ...liveRun,
+          status: "working",
+          assistant: {
+            ...assistant,
+            blocks: [{ type: "thinking", text: "Response Safety: safe or unsafe" }],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Thinking" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Working" })).not.toBeInTheDocument();
+  });
+
   it("shows a collapsed Magica Thinking row while the run is live", () => {
     render(<MessageList messages={[user, assistant]} liveRun={liveRun} />);
     expect(screen.getByText("create a logo for a agent chat app")).toBeInTheDocument();

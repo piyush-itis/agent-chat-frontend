@@ -62,6 +62,14 @@ describe("overlayRun", () => {
     ]);
   });
 
+  it("does not let stale live metadata keep a finished run active", () => {
+    const next = overlayRun(
+      { ...base, status: "complete" },
+      { meta: { status: "working", pendingTool: "gpt_image_2" } },
+    );
+    expect(next.status).toBe("complete");
+  });
+
   it("keeps persisted text when it is longer than the stream so far", () => {
     const next = overlayRun(
       {
