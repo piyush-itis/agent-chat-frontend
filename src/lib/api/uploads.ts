@@ -14,11 +14,17 @@ export function completeUpload(input: {
   mimeType: string;
   byteSize: number;
   originalName: string;
-  resultUrl?: string;
+  resultUrl: string;
+  assemblyStatus?: string;
   sortOrder?: number;
 }) {
   return apiFetch<Attachment>("/api/uploads/complete", {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function listUploads(chatId?: string) {
+  const query = chatId ? `?chatId=${encodeURIComponent(chatId)}` : "";
+  return apiFetch<{ items: Attachment[] }>(`/api/uploads${query}`);
 }

@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { ClerkProvider, useAuth } from "@clerk/nextjs";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setTokenGetter } from "@/lib/api/client";
+import { ThemeProvider } from "next-themes";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
 
 function TokenBridge({ children }: { children: React.ReactNode }) {
   const { getToken } = useAuth();
@@ -31,7 +34,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider publishableKey={publishableKey}>
       <QueryClientProvider client={queryClient}>
-        <TokenBridge>{children}</TokenBridge>
+        <TokenBridge>
+          <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+            <TooltipProvider>
+              {children}
+              <Toaster />
+            </TooltipProvider>
+          </ThemeProvider>
+        </TokenBridge>
       </QueryClientProvider>
     </ClerkProvider>
   );
