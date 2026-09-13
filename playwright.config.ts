@@ -8,8 +8,8 @@ export default defineConfig({
   webServer: process.env.PLAYWRIGHT_SKIP_WEBSERVER
     ? undefined
     : {
-        command: "pnpm --filter frontend dev",
-        cwd: "..",
+        command: "pnpm dev",
+        cwd: ".",
         url: "http://localhost:3000/sign-in",
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
