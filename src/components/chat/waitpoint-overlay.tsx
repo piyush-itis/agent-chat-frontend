@@ -1,8 +1,19 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useState } from "react";
 import type { Waitpoint } from "@/generated/api";
 import { resumeWaitpoint } from "@/lib/api/runs";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { kindFromUrl } from "@/lib/generated-media";
 
 export function WaitpointOverlay({
   runId,
@@ -13,24 +24,9 @@ export function WaitpointOverlay({
   waitpoint: Waitpoint;
   onDone: () => void;
 }) {
-  const titleId = useId();
-  const dialogRef = useRef<HTMLDivElement>(null);
   const [choiceId, setChoiceId] = useState(waitpoint.payload.choices?.[0]?.id);
   const [busy, setBusy] = useState(false);
   const expired = new Date(waitpoint.expiresAt).getTime() < Date.now();
-
-  useEffect(() => {
-    const previously = document.activeElement as HTMLElement | null;
-    dialogRef.current?.focus();
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") event.preventDefault();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      previously?.focus();
-    };
-  }, []);
 
   async function decide(decision: "approved" | "rejected") {
     setBusy(true);
@@ -47,34 +43,37 @@ export function WaitpointOverlay({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        className="w-full max-w-lg rounded-2xl border border-border bg-card p-5 shadow-xl outline-none"
-      >
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">{waitpoint.kind}</p>
-        <h2 id={titleId} className="mt-1 text-lg font-semibold">
-          {waitpoint.payload.title}
-        </h2>
-        <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{waitpoint.payload.summary}</p>
+    <Dialog open>
+      <DialogContent className="sm:max-w-lg" showCloseButton={false}>
+        <DialogHeader>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{waitpoint.kind}</p>
+          <DialogTitle>{waitpoint.payload.title}</DialogTitle>
+          <DialogDescription className="whitespace-pre-wrap">{waitpoint.payload.summary}</DialogDescription>
+        </DialogHeader>
         {waitpoint.payload.estimateCredits ? (
-          <p className="mt-2 text-sm">About {waitpoint.payload.estimateCredits} credits</p>
+          <p className="text-sm">About {waitpoint.payload.estimateCredits} credits</p>
         ) : null}
         {waitpoint.payload.mediaUrls?.length ? (
-          <ul className="mt-3 space-y-2">
+          <ul className="flex flex-col gap-3">
             {waitpoint.payload.mediaUrls.map((url) => (
-              <li key={url} className="truncate text-xs text-muted-foreground">
-                {url}
+              <li key={url}>
+                {kindFromUrl(url) === "video" ? (
+                  <video src={url} controls className="w-full rounded-xl bg-muted" />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={url}
+                    alt="Media to confirm"
+                    referrerPolicy="no-referrer"
+                    className="max-h-72 w-full rounded-xl bg-muted object-contain"
+                  />
+                )}
               </li>
             ))}
           </ul>
         ) : null}
         {waitpoint.payload.choices?.length ? (
-          <fieldset className="mt-4 space-y-2">
+          <fieldset className="flex flex-col gap-2">
             <legend className="text-sm font-medium">Options</legend>
             {waitpoint.payload.choices.map((choice) => (
               <label key={choice.id} className="flex items-start gap-2 text-sm">
@@ -90,30 +89,22 @@ export function WaitpointOverlay({
           </fieldset>
         ) : null}
         {expired ? (
-          <p className="mt-4 text-sm text-destructive">
-            This approval expired. Send a new message to continue later.
-          </p>
+          <Alert variant="destructive">
+            <AlertDescription>
+              This approval expired. Send a new message to continue later.
+            </AlertDescription>
+          </Alert>
         ) : (
-          <div className="mt-5 flex justify-end gap-2">
-            <button
-              type="button"
-              className="rounded-lg border border-border px-3 py-1.5 text-sm"
-              disabled={busy}
-              onClick={() => void decide("rejected")}
-            >
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={busy} onClick={() => void decide("rejected")}>
               Reject
-            </button>
-            <button
-              type="button"
-              className="rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground"
-              disabled={busy}
-              onClick={() => void decide("approved")}
-            >
+            </Button>
+            <Button type="button" disabled={busy} onClick={() => void decide("approved")}>
               Approve
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

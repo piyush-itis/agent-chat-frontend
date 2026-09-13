@@ -1,30 +1,67 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { UserButton } from "@clerk/nextjs";
-import { PinIcon, PlusIcon, SearchIcon, StarIcon, Trash2Icon, XIcon } from "lucide-react";
-import { useChatList, useCreateChat, useDeleteChat, useFavoriteChat, usePinChat } from "@/hooks/use-chats";
-import { useCredits } from "@/hooks/use-credits";
-import { useUiStore } from "@/stores/ui";
+import {
+  AtomIcon,
+  CirclePlusIcon,
+  FolderIcon,
+  LibraryIcon,
+  LifeBuoyIcon,
+  MessageCircleIcon,
+  PanelLeftIcon,
+  SearchIcon,
+  SparkleIcon,
+  SquareTerminalIcon,
+} from "lucide-react";
+import { toast } from "sonner";
+import { useChatList } from "@/hooks/use-chats";
+import { useUiStore, type RailView } from "@/stores/ui";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { MagicaWordmark } from "./magica-mark";
+import { SidebarAccountMenu } from "./sidebar-account-menu";
+
+const UNAVAILABLE = "Not available in this workspace.";
+
+const DEAD_NAV = [
+  { label: "Projects", icon: FolderIcon },
+  { label: "Library", icon: LibraryIcon },
+  { label: "Tools", icon: AtomIcon },
+  { label: "API / MCP", icon: SquareTerminalIcon },
+  { label: "Help & Support", icon: LifeBuoyIcon },
+  { label: "Unfair Advantage", icon: SparkleIcon },
+] as const;
 
 export function Sidebar({ activeChatId }: { activeChatId?: string }) {
   const router = useRouter();
-  const [query, setQuery] = useState("");
   const sidebarOpen = useUiStore((state) => state.sidebarOpen);
+  const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
   const setSidebarOpen = useUiStore((state) => state.setSidebarOpen);
-  const chats = useChatList(query);
-  const createChat = useCreateChat();
-  const favorite = useFavoriteChat();
-  const pin = usePinChat();
-  const remove = useDeleteChat();
-  const credits = useCredits();
+  const setSidebarCollapsed = useUiStore((state) => state.setSidebarCollapsed);
+  const searchQuery = useUiStore((state) => state.searchQuery);
+  const setSearchQuery = useUiStore((state) => state.setSearchQuery);
+  const chats = useChatList(searchQuery);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const items = chats.data?.pages.flatMap((page) => page.items) ?? [];
-  const pinned = items.filter((chat) => chat.pinned);
-  const rest = items.filter((chat) => !chat.pinned);
+
+  function collapse() {
+    setSidebarCollapsed(true);
+    setSidebarOpen(false);
+  }
+
+  function closeSearch() {
+    setSearchOpen(false);
+    setSearchQuery("");
+  }
+
+  function newTask() {
+    closeSearch();
+    setSidebarOpen(false);
+    router.push("/");
+  }
 
   return (
     <>
@@ -32,125 +69,136 @@ export function Sidebar({ activeChatId }: { activeChatId?: string }) {
         <button
           type="button"
           aria-label="Close sidebar"
-          className="fixed inset-0 z-20 bg-black/50 md:hidden"
+          className="fixed inset-0 z-20 bg-black/30 md:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       ) : null}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-30 flex h-full w-72 shrink-0 flex-col border-r border-border bg-sidebar transition-transform md:static md:translate-x-0",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+          "fixed inset-y-0 left-0 z-30 flex h-full w-[280px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform md:static md:translate-x-0",
+          sidebarCollapsed && "md:hidden",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="flex items-center justify-between px-4 py-4">
-          <div>
-            <p className="text-sm font-semibold">Galaxy</p>
-            <p className="text-xs text-muted-foreground">Agent Chat</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <UserButton />
+        <div className="relative flex h-14 shrink-0 items-center justify-between px-5">
+          <MagicaWordmark />
+          <div className="flex items-center gap-1">
             <button
               type="button"
-              className="md:hidden"
-              aria-label="Close sidebar"
-              onClick={() => setSidebarOpen(false)}
+              aria-label="Search tasks"
+              aria-expanded={searchOpen}
+              className="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-sidebar-accent"
+              onClick={() => {
+                setSearchOpen((open) => {
+                  if (open) setSearchQuery("");
+                  return !open;
+                });
+              }}
             >
-              <XIcon className="size-4" />
+              <SearchIcon className="size-[18px]" strokeWidth={1.75} />
+            </button>
+            <button
+              type="button"
+              aria-label="Collapse sidebar"
+              className="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-sidebar-accent"
+              onClick={collapse}
+            >
+              <PanelLeftIcon className="size-[18px]" strokeWidth={1.75} />
             </button>
           </div>
+          {searchOpen ? (
+            <div className="absolute inset-x-3 top-12 z-10 rounded-2xl border border-border bg-card p-2 shadow-[0_12px_32px_rgba(17,17,17,0.08)]">
+              <Input
+                autoFocus
+                aria-label="Search tasks"
+                placeholder="Search tasks"
+                value={searchQuery}
+                className="h-9 border-0 bg-muted shadow-none focus-visible:ring-0 dark:bg-muted"
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    closeSearch();
+                  }
+                }}
+              />
+            </div>
+          ) : null}
         </div>
 
-        <div className="px-3">
-          <button
-            type="button"
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
-            disabled={createChat.isPending}
-            onClick={async () => {
-              const chat = await createChat.mutateAsync();
-              router.push(`/c/${chat.id}`);
-              setSidebarOpen(false);
-            }}
-          >
-            <PlusIcon className="size-4" />
-            New chat
-          </button>
-          <label className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-background px-2 py-1.5">
-            <SearchIcon className="size-3.5 text-muted-foreground" />
-            <input
-              aria-label="Search chats"
-              placeholder="Search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              className="w-full bg-transparent text-sm outline-none"
+        <nav className="flex min-h-0 flex-1 flex-col px-4 pt-1">
+          <RailButton
+            icon={<CirclePlusIcon className="size-[18px]" strokeWidth={1.75} />}
+            label="New task"
+            onClick={() => void newTask()}
+          />
+          <RailButton
+            icon={<MessageCircleIcon className="size-[18px]" strokeWidth={1.75} />}
+            label="Tasks"
+            onClick={() => closeSearch()}
+          />
+          {DEAD_NAV.map((item) => (
+            <RailButton
+              key={item.label}
+              icon={<item.icon className="size-[18px]" strokeWidth={1.75} />}
+              label={item.label}
+              onClick={() => toast.message(UNAVAILABLE)}
             />
-          </label>
-        </div>
+          ))}
 
-        <nav className="mt-4 flex-1 overflow-y-auto px-2">
-          {items.length === 0 ? (
-            <p className="px-2 text-xs text-muted-foreground">
-              {query ? "No chats match that search" : "No chats yet"}
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-0.5">
-              {[...pinned, ...rest].map((chat) => (
-                <li key={chat.id}>
-                  <div
-                    className={cn(
-                      "group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm",
-                      activeChatId === chat.id
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "hover:bg-sidebar-accent/60",
-                    )}
-                  >
+          <p className="mt-6 px-1 text-[13px] text-muted-foreground">Recent tasks</p>
+          <div className="mt-2 min-h-0 flex-1 overflow-y-auto pb-3">
+            {items.length === 0 ? (
+              <p className="px-1 pt-4 text-[13px] text-muted-foreground">No tasks yet</p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {items.map((chat) => (
+                  <li key={chat.id}>
                     <Link
                       href={`/c/${chat.id}`}
-                      className="min-w-0 flex-1 truncate"
-                      onClick={() => setSidebarOpen(false)}
+                      className={cn(
+                        "block truncate rounded-full px-4 py-2.5 text-[15px] text-sidebar-foreground",
+                        activeChatId === chat.id ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
+                      )}
+                      onClick={() => {
+                        closeSearch();
+                        setSidebarOpen(false);
+                      }}
                     >
                       {chat.title}
                     </Link>
-                    <button
-                      type="button"
-                      aria-label={chat.pinned ? "Unpin chat" : "Pin chat"}
-                      className="opacity-0 group-hover:opacity-100"
-                      onClick={() => pin.mutate({ chatId: chat.id, pinned: !chat.pinned })}
-                    >
-                      <PinIcon className={cn("size-3.5", chat.pinned && "fill-current")} />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={chat.favorited ? "Unfavorite chat" : "Favorite chat"}
-                      className="opacity-0 group-hover:opacity-100"
-                      onClick={() => favorite.mutate({ chatId: chat.id, favorited: !chat.favorited })}
-                    >
-                      <StarIcon className={cn("size-3.5", chat.favorited && "fill-current")} />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Delete chat"
-                      className="opacity-0 group-hover:opacity-100"
-                      onClick={async () => {
-                        await remove.mutateAsync(chat.id);
-                        if (activeChatId === chat.id) router.push("/");
-                      }}
-                    >
-                      <Trash2Icon className="size-3.5" />
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </nav>
 
-        <div className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
-          <p>Credits: {credits.data?.balance ?? "—"}</p>
-          <Link href="/settings" className="mt-1 inline-block underline">
-            API keys
-          </Link>
-        </div>
+        <SidebarAccountMenu />
       </aside>
     </>
   );
 }
+
+function RailButton({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-xl px-1 py-2.5 text-left text-[15px] text-sidebar-foreground hover:bg-sidebar-accent"
+    >
+      <span className="text-muted-foreground">{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+export type { RailView };

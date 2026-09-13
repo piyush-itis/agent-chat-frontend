@@ -1,4 +1,5 @@
 import type { ContentBlock } from "@/generated/api";
+import { formatMagicaCredits } from "@/lib/format-magica-credits";
 
 export function ToolCard({
   use,
@@ -11,11 +12,11 @@ export function ToolCard({
   const output = (result?.output ?? {}) as Record<string, unknown>;
   const imageUrl = typeof output.image_url === "string" ? output.image_url : null;
   const videoUrl = typeof output.video_url === "string" ? output.video_url : null;
-  const creditCost = typeof output.creditCost === "number" ? output.creditCost : null;
+  const creditUsed = typeof output.creditUsed === "number" ? output.creditUsed : null;
 
   return (
-    <section className="my-3 rounded-xl border border-border bg-secondary/40 p-3">
-      <div className="flex items-center justify-between gap-2 text-xs">
+    <section className="my-3 rounded-2xl border border-border bg-secondary/60 p-3">
+      <div className="flex items-center justify-between gap-2 text-[12px]">
         <p className="font-medium">{labelFor(use.toolName)}</p>
         <p className="text-muted-foreground">{statusLabel(status)}</p>
       </div>
@@ -27,13 +28,13 @@ export function ToolCard({
       ) : null}
       {imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={imageUrl} alt="Generated" className="mt-3 max-h-80 rounded-lg" />
+        <img src={imageUrl} alt="Generated" className="mt-3 max-h-80 rounded-2xl" />
       ) : null}
       {videoUrl ? (
-        <video src={videoUrl} controls className="mt-3 max-h-80 w-full rounded-lg" />
+        <video src={videoUrl} controls className="mt-3 max-h-80 w-full rounded-2xl" />
       ) : null}
-      {creditCost !== null ? (
-        <p className="mt-2 text-xs text-muted-foreground">{creditCost} credits</p>
+      {creditUsed !== null && creditUsed > 0 ? (
+        <p className="mt-2 text-[11px] text-muted-foreground">{formatMagicaCredits(creditUsed)}</p>
       ) : null}
     </section>
   );
