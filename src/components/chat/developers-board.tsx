@@ -10,7 +10,7 @@ import { formatRelativeTime } from "@/lib/format-relative-time";
 import { useUiStore } from "@/stores/ui";
 import { cn } from "@/lib/utils";
 
-export const API_DOCS_URL = "https://chat-agent.mintlify.site/";
+export const API_DOCS_URL = "https://galaxy-chat-agent.mintlify.site/";
 
 export function DevelopersBoard() {
   const queryClient = useQueryClient();
@@ -175,7 +175,7 @@ export function DevelopersBoard() {
           MCP is not a separate runtime in this workspace. Use the REST API from your server — browsers on other
           origins are blocked by CORS. Full reference:{" "}
           <a href={API_DOCS_URL} target="_blank" rel="noreferrer" className="text-foreground underline-offset-4 hover:underline">
-            chat-agent.mintlify.site
+            galaxy-chat-agent.mintlify.site
           </a>
           .
         </p>

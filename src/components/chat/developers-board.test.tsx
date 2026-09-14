@@ -45,7 +45,7 @@ describe("DevelopersBoard", () => {
 
     expect(screen.getByRole("heading", { name: "API / MCP" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /API documentation/ })).toHaveAttribute("href", API_DOCS_URL);
-    expect(screen.getByRole("link", { name: "chat-agent.mintlify.site" })).toHaveAttribute("href", API_DOCS_URL);
+    expect(screen.getByRole("link", { name: "galaxy-chat-agent.mintlify.site" })).toHaveAttribute("href", API_DOCS_URL);
 
     fireEvent.change(screen.getByLabelText("Key name"), { target: { value: "Production" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate key" }));
