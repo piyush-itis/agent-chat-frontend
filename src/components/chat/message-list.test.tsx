@@ -78,6 +78,12 @@ describe("MessageList thinking UI", () => {
     expect(screen.queryByText("Magica")).not.toBeInTheDocument();
   });
 
+  it("shows Thinking only once when pendingThinking overlaps a live assistant", () => {
+    render(<MessageList messages={[user, assistant]} liveRun={liveRun} pendingThinking />);
+    expect(screen.getAllByRole("button", { name: "Thinking" })).toHaveLength(1);
+    expect(document.querySelector("[data-thread-end]")).toBeInTheDocument();
+  });
+
   it("hides assistant chatter and keeps the timeline while questions are open", () => {
     render(
       <MessageList
@@ -140,6 +146,27 @@ describe("MessageList thinking UI", () => {
       />,
     );
     expect(screen.getByRole("button", { name: "Working · Merge Videos" })).toBeInTheDocument();
+  });
+
+  it("reveals live thinking and partial text instead of waiting for the full reply", () => {
+    render(
+      <MessageList
+        messages={[user]}
+        liveRun={{
+          ...liveRun,
+          assistant: {
+            ...assistant,
+            blocks: [
+              { type: "thinking", text: "I will sketch a mark first, then generate the logo." },
+              { type: "text", text: "Here is" },
+            ],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText(/I will sketch a mark first/)).toBeInTheDocument();
+    expect(screen.getByText("Here is")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Thinking" })).toBeInTheDocument();
   });
 
   it("streams the final confirmation instead of keeping the working row", () => {
@@ -265,6 +292,51 @@ describe("MessageList thinking UI", () => {
     );
     expect(screen.getByText(/0\.24M credits/)).toBeInTheDocument();
     expect(screen.queryByText(/1 credits/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/openrouter\/free/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+  });
+
+  it("shows caption, hero image, and Magica footer on a completed generate turn", () => {
+    render(
+      <MessageList
+        messages={[
+          user,
+          {
+            ...assistant,
+            blocks: [
+              { type: "tool_use", invocationId: "g1", toolName: "gpt_image_2", input: { prompt: "Earth" } },
+              {
+                type: "tool_result",
+                invocationId: "g1",
+                toolName: "gpt_image_2",
+                output: { image_url: "https://cdn.example/earth.png", creditUsed: 390000, durationMs: 2000 },
+                status: "success",
+              },
+              { type: "text", text: "Here's your image of Earth:" },
+              {
+                type: "usage",
+                modelRouted: "openrouter/free",
+                promptTokens: 10,
+                completionTokens: 4,
+                applicationCredits: 1,
+                magicaCreditUsed: 390000,
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText("Here's your image of Earth:")).toBeInTheDocument();
+    expect(screen.getByText("Completed 1 step")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Generated image" })).toHaveAttribute(
+      "src",
+      "https://cdn.example/earth.png",
+    );
+    expect(screen.getAllByRole("img")).toHaveLength(1);
+    expect(screen.getByText("0.39M credits")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+    expect(screen.queryByText(/openrouter\/free/)).not.toBeInTheDocument();
+    expect(screen.queryByText("View more")).not.toBeInTheDocument();
   });
 
   it("does not paint the latest run image onto an earlier assistant turn", () => {
@@ -356,13 +428,15 @@ describe("MessageList thinking UI", () => {
         ]}
       />,
     );
-    expect(screen.getByText("Working · 1 step")).toBeInTheDocument();
+    expect(screen.getByText("Completed 1 step")).toBeInTheDocument();
+    expect(screen.queryByText("AI Generation")).not.toBeInTheDocument();
     expect(screen.queryByText("View more")).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Generated image" })).toHaveAttribute(
       "src",
       "https://cdn.example/elephant.png",
     );
     expect(screen.getByText("Here's your cartoon purple elephant!")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
   });
 
   it("expands thinking text only after click", async () => {
@@ -380,5 +454,21 @@ describe("MessageList thinking UI", () => {
     expect(screen.queryByText("I will sketch a mark first.")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Thinking" }));
     expect(screen.getByText("I will sketch a mark first.")).toBeInTheDocument();
+  });
+
+  it("shows Stopping immediately when stop is requested", () => {
+    render(<MessageList messages={[user, assistant]} liveRun={liveRun} stopping />);
+    expect(screen.getByRole("button", { name: "Stopping" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Thinking" })).not.toBeInTheDocument();
+  });
+
+  it("shows Stopped after a cancelled run", () => {
+    render(
+      <MessageList
+        messages={[user, { ...assistant, status: "cancelled" }]}
+        liveRun={{ ...liveRun, status: "cancelled" }}
+      />,
+    );
+    expect(screen.getByText("Stopped")).toBeInTheDocument();
   });
 });

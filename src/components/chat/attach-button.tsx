@@ -17,6 +17,8 @@ type AssemblyResult = {
   results?: Record<string, { ssl_url?: string; url?: string }[]>;
 };
 
+export type ComposerAttachment = Attachment & { uploadProgress?: number };
+
 export function isPendingAttachment(item: Attachment) {
   return item.id.startsWith("pending:");
 }
@@ -25,11 +27,16 @@ export function attachmentPreviewUrl(item: Attachment) {
   return item.durableUrl ?? item.resultUrl;
 }
 
+function uploadProgressOf(item: ComposerAttachment) {
+  if (!isPendingAttachment(item)) return undefined;
+  return typeof item.uploadProgress === "number" ? item.uploadProgress : 0;
+}
+
 export function AttachmentPreviewRow({
   attachments,
   onRemove,
 }: {
-  attachments: Attachment[];
+  attachments: ComposerAttachment[];
   onRemove: (id: string) => void;
 }) {
   if (attachments.length === 0) return null;
@@ -39,6 +46,7 @@ export function AttachmentPreviewRow({
       {attachments.map((item) => {
         const src = attachmentPreviewUrl(item);
         const pending = isPendingAttachment(item);
+        const progress = uploadProgressOf(item);
         const image = item.mimeType.startsWith("image/") && src;
         const video = item.mimeType.startsWith("video/") && src;
 
@@ -46,8 +54,8 @@ export function AttachmentPreviewRow({
           <li key={item.id} className="relative size-[72px]">
             <div
               className={cn(
-                "size-full overflow-hidden rounded-[16px] bg-muted",
-                pending && "opacity-70",
+                "size-full overflow-hidden rounded-[16px] bg-muted transition-opacity duration-300",
+                pending && "opacity-40",
               )}
             >
               {image ? (
@@ -61,6 +69,11 @@ export function AttachmentPreviewRow({
                 </div>
               )}
             </div>
+            {pending && progress !== undefined ? (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-[16px] bg-black/25">
+                <UploadProgressRing value={progress} label={`Uploading ${item.originalName}`} />
+              </div>
+            ) : null}
             <button
               type="button"
               aria-label={`Remove ${item.originalName}`}
@@ -76,6 +89,50 @@ export function AttachmentPreviewRow({
   );
 }
 
+function UploadProgressRing({ value, label }: { value: number; label: string }) {
+  const size = 28;
+  const stroke = 2.5;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.min(100, Math.max(0, value));
+  const offset = circumference * (1 - clamped / 100);
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      className="-rotate-90"
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(clamped)}
+    >
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        className="text-white/30"
+        stroke="currentColor"
+        strokeWidth={stroke}
+      />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        className="text-white transition-[stroke-dashoffset] duration-150 ease-out"
+        stroke="currentColor"
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+      />
+    </svg>
+  );
+}
+
 export function AttachButton({
   chatId,
   attachments,
@@ -83,8 +140,8 @@ export function AttachButton({
   placement = "bottom",
 }: {
   chatId?: string;
-  attachments: Attachment[];
-  onChange: (next: Attachment[]) => void;
+  attachments: ComposerAttachment[];
+  onChange: (next: ComposerAttachment[]) => void;
   placement?: "top" | "bottom";
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -151,7 +208,12 @@ export function AttachButton({
         const pending = makePendingAttachment(file, next.length);
         next.push(pending);
         onChange([...next]);
-        const saved = await uploadOne(file, pending.sortOrder);
+        const saved = await uploadOne(file, pending, (percent) => {
+          const current = next.findIndex((item) => item.id === pending.id);
+          if (current < 0) return;
+          next[current] = { ...next[current], uploadProgress: percent };
+          onChange([...next]);
+        });
         const index = next.findIndex((item) => item.id === pending.id);
         revokePreview(pending);
         if (index >= 0) next[index] = saved;
@@ -176,13 +238,17 @@ export function AttachButton({
     }
   }
 
-  async function uploadOne(file: File, sortOrder: number): Promise<Attachment> {
+  async function uploadOne(
+    file: File,
+    pending: ComposerAttachment,
+    onProgress: (percent: number) => void,
+  ): Promise<Attachment> {
     const signed = await signUpload({
       mimeType: file.type,
       byteSize: file.size,
       originalName: file.name,
     });
-    const { assemblyId, resultUrl, assemblyStatus } = await uploadWithUppy(file, signed);
+    const { assemblyId, resultUrl, assemblyStatus } = await uploadWithUppy(file, signed, onProgress);
     return completeUpload({
       chatId,
       assemblyId,
@@ -191,7 +257,7 @@ export function AttachButton({
       originalName: file.name,
       resultUrl,
       assemblyStatus,
-      sortOrder,
+      sortOrder: pending.sortOrder,
     });
   }
 
@@ -331,6 +397,7 @@ export function AttachButton({
   async function uploadWithUppy(
     file: File,
     signed: { params: string; signature: string },
+    onProgress: (percent: number) => void,
   ): Promise<{ assemblyId: string; resultUrl: string; assemblyStatus: string }> {
     const [{ default: Uppy }, { default: Transloadit }] = await Promise.all([
       import("@uppy/core"),
@@ -348,12 +415,34 @@ export function AttachButton({
       waitForEncoding: true,
     });
     uppyRef.current = uppy;
+    let last = -1;
+    const report = (percent: number) => {
+      const next = Math.min(99, Math.max(0, Math.round(percent)));
+      if (next === last) return;
+      last = next;
+      onProgress(next);
+    };
+    uppy.on("upload-progress", (_current, progress) => {
+      if (typeof progress.percentage === "number") {
+        report(progress.percentage * 0.9);
+        return;
+      }
+      const total = progress.bytesTotal || file.size;
+      if (total) report((progress.bytesUploaded / total) * 90);
+    });
+    uppy.on("postprocess-progress", (_current, progress) => {
+      if (progress.mode === "determinate" && typeof progress.value === "number") {
+        const part = progress.value > 1 ? progress.value / 100 : progress.value;
+        report(90 + part * 9);
+      }
+    });
     uppy.addFile({ name: file.name, type: file.type, data: file });
     const result = await uppy.upload();
     uppyRef.current = null;
     if (result?.failed?.length) {
       throw new Error(result.failed[0]?.error ?? "Upload failed");
     }
+    onProgress(100);
     const assembly = (result as { transloadit?: AssemblyResult[] } | undefined)?.transloadit?.[0];
     const assemblyId = assembly?.assembly_id;
     const resultUrl = extractResultUrl(assembly);
@@ -364,7 +453,7 @@ export function AttachButton({
   }
 }
 
-function makePendingAttachment(file: File, sortOrder: number): Attachment {
+function makePendingAttachment(file: File, sortOrder: number): ComposerAttachment {
   return {
     id: `pending:${crypto.randomUUID()}`,
     mimeType: file.type,
@@ -372,6 +461,7 @@ function makePendingAttachment(file: File, sortOrder: number): Attachment {
     resultUrl: URL.createObjectURL(file),
     durableUrl: null,
     sortOrder,
+    uploadProgress: 0,
   };
 }
 

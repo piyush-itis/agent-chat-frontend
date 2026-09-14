@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowUpIcon, MicIcon, SquareIcon } from "lucide-react";
 import { toast } from "sonner";
 import { ApiClientError } from "@/lib/api/client";
@@ -8,7 +8,12 @@ import { useUiStore } from "@/stores/ui";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { AttachButton, AttachmentPreviewRow, isPendingAttachment } from "./attach-button";
+import {
+  AttachButton,
+  AttachmentPreviewRow,
+  isPendingAttachment,
+  type ComposerAttachment,
+} from "./attach-button";
 import type { Attachment } from "@/generated/api";
 
 export function Composer({
@@ -32,21 +37,31 @@ export function Composer({
 }) {
   const draft = useUiStore((state) => state.composerDraft);
   const setDraft = useUiStore((state) => state.setComposerDraft);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [planMode, setPlanMode] = useState(false);
   const [listening, setListening] = useState(false);
+  const [ghost, setGhost] = useState<string | null>(null);
   const canSend =
     Boolean(draft.trim()) && !disabled && !sending && !attachments.some(isPendingAttachment);
+
+  useEffect(() => {
+    if (!ghost) return;
+    const id = window.setTimeout(() => setGhost(null), 280);
+    return () => window.clearTimeout(id);
+  }, [ghost]);
 
   async function submit() {
     const text = draft.trim();
     const ready = attachments.filter((item) => !isPendingAttachment(item));
     if (!text || disabled || sending || active || attachments.some(isPendingAttachment)) return;
+    const send = onSend(text, ready, planMode);
+    if (variant === "dock") setGhost(text);
     setDraft("");
     try {
-      await onSend(text, ready, planMode);
+      await send;
       setAttachments([]);
     } catch (error) {
+      setGhost(null);
       setDraft(text);
       if (error instanceof ApiClientError) {
         toast.error(error.body.message);
@@ -113,6 +128,16 @@ export function Composer({
               });
             }}
           />
+          {ghost ? (
+            <div className="flex justify-end pb-2">
+              <p
+                className="max-w-[min(100%,34rem)] animate-out fade-out slide-out-to-top-2 rounded-full bg-muted px-4 py-[7px] text-[15px] leading-6 text-foreground duration-[260ms] fill-mode-forwards"
+                onAnimationEnd={() => setGhost(null)}
+              >
+                {ghost}
+              </p>
+            </div>
+          ) : null}
           <Textarea
             aria-label="Assign a task"
             rows={variant === "home" ? 2 : 1}
@@ -172,13 +197,15 @@ export function Composer({
                 aria-label={active ? "Stop generation" : "Send"}
                 disabled={active ? stopping || !onStop : !canSend}
                 className={cn(
-                  "border-0 shadow-none focus-visible:border-0 focus-visible:ring-0 disabled:opacity-100",
+                  "border-0 shadow-none transition-opacity focus-visible:border-0 focus-visible:ring-0 disabled:opacity-100",
                   active
                     ? "size-8 rounded-full bg-[#ff3b30] text-white hover:bg-[#e0352b]"
                     : canSend
                       ? "size-8 rounded-full bg-primary text-primary-foreground hover:bg-primary"
                       : "size-6 bg-transparent text-muted-foreground hover:bg-transparent hover:text-foreground",
+                  active && stopping && "stop-control-ring",
                 )}
+                aria-busy={active && stopping}
                 onClick={() => {
                   if (active) {
                     void onStop?.();
@@ -188,7 +215,10 @@ export function Composer({
                 }}
               >
                 {active ? (
-                  <SquareIcon className="size-2.5 fill-current" strokeWidth={0} />
+                  <SquareIcon
+                    className={cn("size-2.5 fill-current", stopping && "stop-control-square")}
+                    strokeWidth={0}
+                  />
                 ) : (
                   <ArrowUpIcon className="size-4" strokeWidth={2.25} />
                 )}

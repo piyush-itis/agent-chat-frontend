@@ -7,6 +7,7 @@ export type PendingOutgoing = {
   chatId: string;
   text: string;
   attachments: Attachment[];
+  clientKey: string;
 };
 
 type UiState = {

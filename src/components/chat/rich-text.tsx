@@ -8,6 +8,19 @@ export function extractMarkdownImages(text: string): string[] {
   return [...text.matchAll(new RegExp(IMAGE_MD.source, "g"))].map((match) => match[2]);
 }
 
+export function stripMarkdownMedia(text: string, urls?: Set<string>): string {
+  if (!urls || urls.size === 0) return text;
+  const withoutEmbeds = text.replace(new RegExp(IMAGE_MD.source, "g"), (match, _alt, src) =>
+    urls.has(src) ? "" : match,
+  );
+  return withoutEmbeds
+    .split("\n")
+    .filter((line) => !urls.has(line.trim()))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function RichText({
   text,
   resolveSrc,

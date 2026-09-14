@@ -47,5 +47,28 @@ describe("AttachButton", () => {
     );
     expect(screen.getByAltText("sky.jpg")).toBeInTheDocument();
     expect(screen.getByLabelText("Remove sky.jpg")).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
+  it("fades a pending upload and shows circular progress until it finishes", () => {
+    render(
+      <AttachmentPreviewRow
+        attachments={[
+          {
+            id: "pending:1",
+            mimeType: "image/jpeg",
+            originalName: "sky.jpg",
+            resultUrl: "https://example.com/sky.jpg",
+            durableUrl: null,
+            sortOrder: 0,
+            uploadProgress: 42,
+          },
+        ]}
+        onRemove={vi.fn()}
+      />,
+    );
+    const progress = screen.getByRole("progressbar", { name: "Uploading sky.jpg" });
+    expect(progress).toHaveAttribute("aria-valuenow", "42");
+    expect(screen.getByAltText("sky.jpg").parentElement).toHaveClass("opacity-40");
   });
 });

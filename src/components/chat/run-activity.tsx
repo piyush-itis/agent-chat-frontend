@@ -15,6 +15,14 @@ const TOOL_LABELS: Record<string, string> = {
   get_pricing: "Get Pricing",
 };
 
+export function isLiveThinkingText(text?: string) {
+  const value = text?.trim() ?? "";
+  if (value.length < 12) return false;
+  if (/^(user|response|assistant)\s*safety\b/i.test(value)) return false;
+  if (/^(user|assistant|system)$/i.test(value)) return false;
+  return true;
+}
+
 export function activityLabel(status?: string, pendingTool?: string): string {
   if (status === "stopping") return "Stopping";
   if (pendingTool) return `Working · ${pendingTool}`;
@@ -53,6 +61,16 @@ export function ActivityDots({ className }: { className?: string }) {
   );
 }
 
+function StoppingDots() {
+  return (
+    <span className="inline-flex items-center gap-0.5" aria-hidden>
+      <span className="run-stopping-dot size-1 rounded-full bg-[#ff3b30]" />
+      <span className="run-stopping-dot size-1 rounded-full bg-[#ff3b30]" />
+      <span className="run-stopping-dot size-1 rounded-full bg-[#ff3b30]" />
+    </span>
+  );
+}
+
 export function RunActivity({
   status,
   pendingTool,
@@ -64,36 +82,59 @@ export function RunActivity({
   startedAt?: string | number;
   thinking?: string;
 }) {
+  const stopping = status === "stopping";
   const label = activityLabel(status, pendingTool);
   const fallbackStart = useRef(Date.now());
   const origin = startedAt ?? fallbackStart.current;
   const [elapsed, setElapsed] = useState(() => formatElapsed(origin));
   const [open, setOpen] = useState(false);
-  const canExpand = Boolean(thinking?.trim());
+  const visibleThinking = isLiveThinkingText(thinking);
+  const sawThinking = useRef(false);
+  const thinkingRef = useRef<HTMLParagraphElement>(null);
+  const canExpand = visibleThinking && !stopping;
+
+  useEffect(() => {
+    if (visibleThinking && !sawThinking.current && !stopping) setOpen(true);
+    sawThinking.current = visibleThinking;
+  }, [stopping, visibleThinking]);
 
   useEffect(() => {
     const id = window.setInterval(() => setElapsed(formatElapsed(origin)), 1000);
     return () => window.clearInterval(id);
   }, [origin]);
 
+  useEffect(() => {
+    if (!open || !thinkingRef.current) return;
+    thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight;
+  }, [open, thinking]);
+
   return (
     <div aria-live="polite" className="flex flex-col items-start gap-1">
       <button
         type="button"
         aria-label={label}
+        aria-busy={stopping}
         aria-expanded={canExpand ? open : undefined}
         disabled={!canExpand}
-        className="flex items-center gap-2 text-[14px] leading-5 text-muted-foreground disabled:opacity-100"
+        className={cn(
+          "flex items-center gap-2 text-[14px] leading-5 disabled:opacity-100",
+          stopping ? "text-[#ff3b30]" : "text-muted-foreground",
+        )}
         onClick={() => {
           if (canExpand) setOpen((value) => !value);
         }}
       >
-        <ActivityDots />
-        <span>{label}</span>
-        <span className="tabular-nums text-[12px]">{elapsed}</span>
+        {stopping ? <StoppingDots /> : <ActivityDots />}
+        <span>{stopping ? "Stopping…" : label}</span>
+        <span className={cn("tabular-nums text-[12px]", stopping && "opacity-70")}>{elapsed}</span>
       </button>
       {open && thinking ? (
-        <p className="pl-7 whitespace-pre-wrap text-[14px] leading-6 text-muted-foreground">{thinking}</p>
+        <p
+          ref={thinkingRef}
+          className="max-h-40 overflow-y-auto pl-7 whitespace-pre-wrap text-[14px] leading-6 text-muted-foreground"
+        >
+          {thinking}
+        </p>
       ) : null}
     </div>
   );

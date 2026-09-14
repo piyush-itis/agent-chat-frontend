@@ -1,20 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  CheckIcon,
-  ChevronDownIcon,
-  CircleDollarSignIcon,
-  FileTextIcon,
-  KeyRoundIcon,
-  SparklesIcon,
-  WandSparklesIcon,
-} from "lucide-react";
+import { ChevronDownIcon, CircleCheckIcon, FileTextIcon, KeyRoundIcon, SparklesIcon, ZapIcon } from "lucide-react";
 import type { ContentBlock, GeneratedAsset, Waitpoint } from "@/generated/api";
-import { formatMagicaCredits } from "@/lib/format-magica-credits";
-import { assetFromUrl, urlsFromToolOutput } from "@/lib/generated-media";
 import { cn } from "@/lib/utils";
-import { ActivityDots } from "./run-activity";
 
 export type InspectorTarget = {
   title: string;
@@ -22,12 +11,12 @@ export type InspectorTarget = {
   asset?: GeneratedAsset;
 };
 
+const HIDDEN_STEPS = new Set(["get_pricing"]);
+
 export function WorkTimeline({
   blocks,
   waitpoint,
-  assets,
   live,
-  onInspect,
 }: {
   blocks: ContentBlock[];
   waitpoint?: Waitpoint | null;
@@ -38,13 +27,18 @@ export function WorkTimeline({
   const [collapsed, setCollapsed] = useState(!live);
   const steps = collectSteps(blocks, waitpoint);
   const answers = latestAnswers(steps);
-  const pending = Boolean(live && steps.some((step) => step.status === "pending"));
+  const pending = steps.some((step) => step.status === "pending");
+  const finished = !live && !pending;
 
   useEffect(() => {
-    if (!live) setCollapsed(true);
+    setCollapsed(!live);
   }, [live]);
 
   if (steps.length === 0) return null;
+
+  const header = finished
+    ? `Completed ${steps.length} step${steps.length === 1 ? "" : "s"}`
+    : `Working · ${steps.length} step${steps.length === 1 ? "" : "s"}`;
 
   return (
     <div className="min-w-0 w-full">
@@ -66,17 +60,16 @@ export function WorkTimeline({
       ) : null}
       <button
         type="button"
-        className="mb-3 flex items-center gap-2 text-[13px] text-muted-foreground"
+        className="mb-2 flex items-center gap-1.5 text-[13px] text-muted-foreground"
         onClick={() => setCollapsed((value) => !value)}
       >
-        {pending ? <ActivityDots /> : null}
-        Working · {steps.length} step{steps.length === 1 ? "" : "s"}
+        {header}
         <ChevronDownIcon className={cn("size-3.5 transition-transform", collapsed && "-rotate-90")} />
       </button>
       {collapsed ? null : (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col">
           {steps.map((step) => (
-            <StepRow key={step.id} step={step} assets={assets} live={live} onInspect={onInspect} />
+            <StepRow key={step.id} step={step} live={live} />
           ))}
         </div>
       )}
@@ -92,24 +85,12 @@ type TimelineStep = {
   status: "pending" | "success" | "failed";
 };
 
-function StepRow({
-  step,
-  assets,
-  live,
-  onInspect,
-}: {
-  step: TimelineStep;
-  assets?: GeneratedAsset[];
-  live?: boolean;
-  onInspect?: (target: InspectorTarget) => void;
-}) {
+function StepRow({ step, live }: { step: TimelineStep; live?: boolean }) {
   const running = step.status === "pending";
   const meta = stepMeta(step.toolName, step.status, Boolean(live && running));
   const fields = fieldsFor(step);
   const duration = durationLabel(step.output);
-  const credit = creditLabel(step);
-  const media = imageFrom(step, assets);
-  const canExpand = fields.length > 0 || Boolean(media);
+  const canExpand = meta.expandable && fields.length > 0;
   const [open, setOpen] = useState(Boolean(live) && meta.defaultOpen);
 
   useEffect(() => {
@@ -125,49 +106,33 @@ function StepRow({
           if (canExpand) setOpen((value) => !value);
         }}
       >
-        <span className={cn("flex size-5 items-center justify-center", meta.iconClass)}>{meta.icon}</span>
-        <span className="text-[14px] text-foreground">{meta.label}</span>
-        <span className="ml-auto flex items-center gap-2 text-[12px] text-muted-foreground">
-          {credit ? <span>{credit}</span> : null}
-          {running ? (
-            <span className="size-3.5 animate-spin rounded-full border border-border border-t-muted-foreground" />
-          ) : (
-            <>
-              <span className="flex size-3.5 items-center justify-center rounded-full bg-[#22c55e] text-white">
-                <CheckIcon className="size-2.5" strokeWidth={3} />
-              </span>
-              {duration ? <span>{duration}</span> : null}
-            </>
-          )}
-          {canExpand ? (
-            <ChevronDownIcon className={cn("size-3.5 text-muted-foreground", !open && "-rotate-90")} />
-          ) : null}
-        </span>
+        <span className={cn("flex size-5 shrink-0 items-center justify-center", meta.iconClass)}>{meta.icon}</span>
+        <span className="text-[14px] leading-5 text-foreground">{meta.label}</span>
+        {running ? (
+          <span
+            className="size-3.5 shrink-0 animate-spin rounded-full border border-muted-foreground/30 border-t-muted-foreground"
+            aria-hidden
+          />
+        ) : (
+          <>
+            <CircleCheckIcon className="size-3.5 shrink-0 text-[#22c55e]" strokeWidth={2} />
+            {duration ? <span className="text-[13px] text-muted-foreground">{duration}</span> : null}
+          </>
+        )}
+        {canExpand ? (
+          <ChevronDownIcon
+            className={cn("ml-auto size-3.5 shrink-0 text-muted-foreground", !open && "-rotate-90")}
+          />
+        ) : null}
       </button>
       {open && canExpand ? (
-        <div className="mb-3 ml-7 min-w-0 overflow-hidden rounded-xl border border-border px-4 py-3">
+        <div className="mb-3 min-w-0 overflow-hidden rounded-2xl border border-border px-4 py-3">
           {fields.map((field) => (
-            <div key={field.label} className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 py-1.5 text-[13px]">
+            <div key={field.label} className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 py-1.5 text-[13px] leading-6">
               <p className="text-muted-foreground">{field.label}</p>
               <p className="min-w-0 break-words text-foreground">{field.value}</p>
             </div>
           ))}
-          {media ? <StepMedia asset={media} /> : null}
-          {meta.inspectable ? (
-            <button
-              type="button"
-              className="mt-1 text-[13px] text-[#2563eb]"
-              onClick={() =>
-                onInspect?.({
-                  title: meta.label,
-                  fields: inspectFields(step),
-                  asset: media,
-                })
-              }
-            >
-              View more
-            </button>
-          ) : null}
         </div>
       ) : null}
     </section>
@@ -182,6 +147,7 @@ function collectSteps(blocks: ContentBlock[], waitpoint?: Waitpoint | null): Tim
   const steps: TimelineStep[] = [];
   for (const block of blocks) {
     if (block.type !== "tool_use") continue;
+    if (HIDDEN_STEPS.has(block.toolName)) continue;
     const result = results.get(block.invocationId);
     const input =
       block.toolName === "ask_questions" && waitpoint?.payload.questions?.length
@@ -232,10 +198,10 @@ function stepMeta(toolName: string, status: TimelineStep["status"], livePending:
   if (toolName === "load_skill" || toolName === "read_skill_asset") {
     return {
       label: "Skill",
-      icon: <WandSparklesIcon className="size-3.5" />,
-      iconClass: "text-[#d97706]",
+      icon: <ZapIcon className="size-3.5" strokeWidth={2} />,
+      iconClass: "text-[#e8a017]",
       defaultOpen: false,
-      inspectable: false,
+      expandable: false,
     };
   }
   if (toolName === "ask_questions") {
@@ -244,7 +210,7 @@ function stepMeta(toolName: string, status: TimelineStep["status"], livePending:
       icon: <FileTextIcon className="size-3.5" />,
       iconClass: "text-muted-foreground",
       defaultOpen: livePending || status !== "success",
-      inspectable: false,
+      expandable: true,
     };
   }
   if (toolName === "model_schema") {
@@ -253,16 +219,7 @@ function stepMeta(toolName: string, status: TimelineStep["status"], livePending:
       icon: <KeyRoundIcon className="size-3.5" />,
       iconClass: "text-muted-foreground",
       defaultOpen: false,
-      inspectable: true,
-    };
-  }
-  if (toolName === "get_pricing") {
-    return {
-      label: "Get Pricing",
-      icon: <CircleDollarSignIcon className="size-3.5" />,
-      iconClass: "text-muted-foreground",
-      defaultOpen: false,
-      inspectable: false,
+      expandable: true,
     };
   }
   if (toolName === "gpt_image_2") {
@@ -271,16 +228,34 @@ function stepMeta(toolName: string, status: TimelineStep["status"], livePending:
       icon: <SparklesIcon className="size-3.5" />,
       iconClass: "text-foreground",
       defaultOpen: true,
-      inspectable: true,
+      expandable: true,
     };
   }
   if (toolName === "crop_image") {
-    return { label: "Crop Image", icon: <SparklesIcon className="size-3.5" />, iconClass: "text-foreground", defaultOpen: true, inspectable: true };
+    return {
+      label: "Crop Image",
+      icon: <SparklesIcon className="size-3.5" />,
+      iconClass: "text-foreground",
+      defaultOpen: true,
+      expandable: true,
+    };
   }
   if (toolName === "merge_videos") {
-    return { label: "Merge Videos", icon: <SparklesIcon className="size-3.5" />, iconClass: "text-foreground", defaultOpen: true, inspectable: true };
+    return {
+      label: "Merge Videos",
+      icon: <SparklesIcon className="size-3.5" />,
+      iconClass: "text-foreground",
+      defaultOpen: true,
+      expandable: true,
+    };
   }
-  return { label: toolName, icon: <SparklesIcon className="size-3.5" />, iconClass: "text-muted-foreground", defaultOpen: false, inspectable: false };
+  return {
+    label: toolName,
+    icon: <SparklesIcon className="size-3.5" />,
+    iconClass: "text-muted-foreground",
+    defaultOpen: false,
+    expandable: false,
+  };
 }
 
 function fieldsFor(step: TimelineStep) {
@@ -310,10 +285,10 @@ function fieldsFor(step: TimelineStep) {
   if (step.toolName === "gpt_image_2") {
     return [
       { label: "Tool", value: "generate" },
-      { label: "Model", value: String(output.model ?? "gpt-image-2-text") },
+      { label: "Model", value: String(output.model ?? input.model ?? "gpt-image-2-text") },
       { label: "Prompt", value: String(input.prompt ?? output.prompt ?? "") },
-      { label: "Size", value: String(output.size ?? input.size ?? "1024x1024") },
-      { label: "Quality", value: String(output.quality ?? input.quality ?? "High") },
+      { label: "Size", value: formatSize(String(output.size ?? input.size ?? "1024x1024")) },
+      { label: "Quality", value: titleCase(String(output.quality ?? input.quality ?? "High")) },
     ].filter((row) => row.value);
   }
   if (step.toolName === "crop_image") {
@@ -336,59 +311,23 @@ function fieldsFor(step: TimelineStep) {
       { label: "Transition", value: String(input.transition ?? "none") },
     ].filter((row) => row.value);
   }
-  if (step.toolName === "load_skill") {
-    return [{ label: "Skill", value: String(input.name ?? "") }].filter((row) => row.value);
-  }
   return [];
 }
 
-function inspectFields(step: TimelineStep) {
-  const base = fieldsFor(step);
-  const output = asRecord(step.output);
-  if (step.toolName !== "gpt_image_2") return base;
-  return [
-    ...base,
-    { label: "Output Format", value: String(output.output_format ?? "PNG") },
-    { label: "Background", value: String(output.background ?? "Opaque") },
-    { label: "Number of Images", value: "1" },
-  ];
-}
-
-function durationLabel(output: unknown) {
+export function durationLabel(output: unknown) {
   const ms = asRecord(output).durationMs;
   if (typeof ms !== "number" || ms < 0) return "";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function creditLabel(step: TimelineStep) {
-  const output = asRecord(step.output);
-  if (typeof output.creditUsed === "number" && output.creditUsed > 0) {
-    return formatMagicaCredits(output.creditUsed);
-  }
-  if (typeof output.estimateCredits === "number" && output.estimateCredits > 0) {
-    return formatMagicaCredits(output.estimateCredits);
-  }
-  return "";
+function formatSize(value: string) {
+  return value.replace(/\s*x\s*/i, "×");
 }
 
-function StepMedia({ asset }: { asset: GeneratedAsset }) {
-  const src = asset.durableUrl ?? asset.url;
-  if (asset.kind === "video") {
-    return <video src={src} controls className="mt-3 w-full rounded-xl" />;
-  }
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt="Generated" referrerPolicy="no-referrer" className="mt-3 w-full rounded-xl bg-muted" />
-  );
-}
-
-function imageFrom(step: TimelineStep, assets?: GeneratedAsset[]) {
-  const outputUrl = urlsFromToolOutput(step.output)[0];
-  const inputUrl = asRecord(step.input).image_url;
-  const fallback = typeof inputUrl === "string" && /^https?:\/\//.test(inputUrl) ? inputUrl : undefined;
-  const url = outputUrl ?? fallback;
-  if (!url) return undefined;
-  return assetFromUrl(step.id, url, assets);
+function titleCase(value: string) {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

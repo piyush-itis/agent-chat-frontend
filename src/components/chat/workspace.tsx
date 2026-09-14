@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Sidebar } from "./sidebar";
@@ -18,8 +18,10 @@ import { useRun } from "@/hooks/use-run";
 import { sendTurn } from "@/lib/api/messages";
 import { stopRun } from "@/lib/api/runs";
 import {
+  OPTIMISTIC_PREFIX,
   clearOptimisticMessages,
   dropResolvedOptimistic,
+  forgetOutgoingClientKey,
   makeOptimisticUserMessage,
   seedOptimisticMessage,
 } from "@/lib/optimistic-message";
@@ -38,8 +40,11 @@ export function ChatWorkspace({ chatId }: { chatId?: string }) {
   const setComposerDraft = useUiStore((state) => state.setComposerDraft);
   const [pendingRunId, setPendingRunId] = useState<string | null>(null);
   const [seedRealtime, setSeedRealtime] = useState<RealtimeAccess | undefined>();
+  const [stopRequested, setStopRequested] = useState(false);
   const [sending, setSending] = useState(false);
   const [inspect, setInspect] = useState<InspectorTarget | null>(null);
+  const [sendEpoch, setSendEpoch] = useState(0);
+  const scrollRootRef = useRef<HTMLDivElement>(null);
   const runId = pendingRunId ?? chat.data?.activeRunId ?? null;
   const run = useRun(runId, seedRealtime);
   const history = dropResolvedOptimistic(messages.data?.pages.flatMap((page) => page.items) ?? []);
@@ -57,7 +62,29 @@ export function ChatWorkspace({ chatId }: { chatId?: string }) {
   useEffect(() => {
     setPendingRunId(null);
     setSeedRealtime(undefined);
+    setStopRequested(false);
   }, [chatId]);
+
+  useEffect(() => {
+    if (!stopRequested || !runId) return;
+    let cancelled = false;
+    queryClient.setQueryData(["runs", runId], (current: typeof run.data) =>
+      current && isActive(current.status) ? { ...current, status: "stopping" } : current,
+    );
+    void stopRun(runId)
+      .then((result) => {
+        if (!cancelled) queryClient.setQueryData(["runs", runId], result);
+      })
+      .catch(() => {
+        if (!cancelled) setStopRequested(false);
+      })
+      .finally(() => {
+        if (!cancelled) void queryClient.invalidateQueries({ queryKey: ["runs", runId] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [queryClient, runId, stopRequested]);
 
   useEffect(() => {
     if (run.data && pendingOutgoing?.chatId === chatId) {
@@ -69,6 +96,7 @@ export function ChatWorkspace({ chatId }: { chatId?: string }) {
     if (run.data && !isActive(run.data.status)) {
       setPendingRunId(null);
       setSeedRealtime(undefined);
+      setStopRequested(false);
       void queryClient.invalidateQueries({ queryKey: ["chats", chatId, "messages"] });
       void queryClient.invalidateQueries({ queryKey: ["chats"] });
       void queryClient.invalidateQueries({ queryKey: ["credits"] });
@@ -77,21 +105,22 @@ export function ChatWorkspace({ chatId }: { chatId?: string }) {
 
   async function handleSend(text: string, attachments: Attachment[], planMode: boolean) {
     const attachmentIds = attachments.map((item) => item.id);
+    const clientId = `${OPTIMISTIC_PREFIX}${crypto.randomUUID()}`;
     setSending(true);
+    let id = chatId;
     try {
-      let id = chatId;
       if (!id) {
         const created = await createChat.mutateAsync();
         id = created.id;
-        beginOptimistic(id, text, attachments);
+        beginOptimistic(id, text, attachments, clientId);
         router.push(`/c/${id}`);
       } else {
-        beginOptimistic(id, text, attachments);
+        beginOptimistic(id, text, attachments, clientId);
       }
       const result = await sendTurn(id, {
         text,
         model: "openrouter/free",
-        clientIdempotencyKey: crypto.randomUUID(),
+        clientIdempotencyKey: clientId.slice(OPTIMISTIC_PREFIX.length),
         attachmentIds,
         planMode,
       });
@@ -100,8 +129,12 @@ export function ChatWorkspace({ chatId }: { chatId?: string }) {
       await queryClient.invalidateQueries({ queryKey: ["chats", id, "messages"] });
       await queryClient.invalidateQueries({ queryKey: ["chats"] });
     } catch (error) {
-      if (chatId) clearOptimisticMessages(queryClient, chatId);
+      if (id) {
+        clearOptimisticMessages(queryClient, id);
+        forgetOutgoingClientKey(id, text);
+      }
       setPendingOutgoing(null);
+      setStopRequested(false);
       setComposerDraft(text);
       throw error;
     } finally {
@@ -109,10 +142,11 @@ export function ChatWorkspace({ chatId }: { chatId?: string }) {
     }
   }
 
-  function beginOptimistic(id: string, text: string, attachments: Attachment[]) {
-    const message = makeOptimisticUserMessage(id, text, attachments);
+  function beginOptimistic(id: string, text: string, attachments: Attachment[], clientId: string) {
+    const message = makeOptimisticUserMessage(id, text, attachments, clientId);
     seedOptimisticMessage(queryClient, id, message);
-    setPendingOutgoing({ chatId: id, text, attachments });
+    setPendingOutgoing({ chatId: id, text, attachments, clientKey: message.id });
+    setSendEpoch((value) => value + 1);
   }
 
   return (
@@ -123,15 +157,24 @@ export function ChatWorkspace({ chatId }: { chatId?: string }) {
         {chatId ? (
           <>
             <div className="flex min-h-0 flex-1">
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+              <div
+                key={chatId}
+                ref={scrollRootRef}
+                className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto"
+              >
                 <MessageList
                   messages={history}
                   pendingThinking={outgoingHere && !run.data}
+                  stopping={stopRequested || run.data?.status === "stopping"}
                   liveRun={
                     run.data
                       ? { ...run.data, waitpoint: questionsWaitpoint ?? run.data.waitpoint }
                       : undefined
                   }
+                  scrollRootRef={scrollRootRef}
+                  sendEpoch={sendEpoch}
+                  forceScroll={outgoingHere}
+                  enterClientKey={pendingOutgoing?.chatId === chatId ? pendingOutgoing.clientKey : undefined}
                   onInspect={setInspect}
                 />
                 <div id="task-attachments" />
@@ -153,11 +196,9 @@ export function ChatWorkspace({ chatId }: { chatId?: string }) {
                 disabled={createChat.isPending}
                 sending={sending}
                 active={Boolean((run.data && isActive(run.data.status)) || outgoingHere)}
-                stopping={run.data?.status === "stopping"}
+                stopping={stopRequested || run.data?.status === "stopping"}
                 onStop={async () => {
-                  if (!runId) return;
-                  await stopRun(runId);
-                  await queryClient.invalidateQueries({ queryKey: ["runs", runId] });
+                  setStopRequested(true);
                 }}
                 onSend={handleSend}
               />

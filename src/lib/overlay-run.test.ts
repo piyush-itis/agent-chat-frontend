@@ -62,6 +62,14 @@ describe("overlayRun", () => {
     ]);
   });
 
+  it("does not let stale live metadata keep a stopping run active", () => {
+    const next = overlayRun(
+      { ...base, status: "stopping" },
+      { meta: { status: "thinking", pendingTool: "gpt_image_2" } },
+    );
+    expect(next.status).toBe("stopping");
+  });
+
   it("does not let stale live metadata keep a finished run active", () => {
     const next = overlayRun(
       { ...base, status: "complete" },

@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { WorkTimeline } from "./work-timeline";
 
 afterEach(() => {
@@ -35,40 +35,171 @@ describe("WorkTimeline", () => {
     expect(screen.getByText("1.7s")).toBeInTheDocument();
   });
 
-  it("opens inspector fields from View more", () => {
-    const onInspect = vi.fn();
+  it("keeps Working in the header while the run is live", () => {
     render(
       <WorkTimeline
-        onInspect={onInspect}
+        live
         blocks={[
           {
             type: "tool_use",
             invocationId: "g1",
             toolName: "gpt_image_2",
-            input: { mode: "text", prompt: "A modern logo" },
+            input: { prompt: "Earth" },
           },
           {
             type: "tool_result",
             invocationId: "g1",
             toolName: "gpt_image_2",
-            output: { image_url: "https://cdn.example/a.png", model: "gpt-image-2-text", durationMs: 2000 },
+            output: { durationMs: 2000 },
             status: "success",
           },
         ]}
       />,
     );
-    fireEvent.click(screen.getByText("Working · 1 step"));
-    fireEvent.click(screen.getByText("AI Generation"));
-    expect(screen.getByText("AI Generation")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Generated" })).toHaveAttribute("src", "https://cdn.example/a.png");
-    fireEvent.click(screen.getByRole("button", { name: "View more" }));
-    expect(onInspect).toHaveBeenCalled();
-    expect(onInspect.mock.calls[0][0].title).toBe("AI Generation");
+    expect(screen.getByText("Working · 1 step")).toBeInTheDocument();
+    expect(screen.queryByText(/Completed/)).not.toBeInTheDocument();
   });
 
-  it("shows a cropped image instead of the source URL", () => {
+  it("uses Completed N steps when the run is finished", () => {
     render(
       <WorkTimeline
+        blocks={[
+          {
+            type: "tool_use",
+            invocationId: "g1",
+            toolName: "gpt_image_2",
+            input: { prompt: "Earth" },
+          },
+          {
+            type: "tool_result",
+            invocationId: "g1",
+            toolName: "gpt_image_2",
+            output: { durationMs: 2000 },
+            status: "success",
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText("Completed 1 step")).toBeInTheDocument();
+    expect(screen.queryByText(/Working/)).not.toBeInTheDocument();
+  });
+
+  it("formats sub-second durations as milliseconds", () => {
+    render(
+      <WorkTimeline
+        live
+        blocks={[
+          { type: "tool_use", invocationId: "s1", toolName: "load_skill", input: { name: "image-generation" } },
+          {
+            type: "tool_result",
+            invocationId: "s1",
+            toolName: "load_skill",
+            output: { durationMs: 207 },
+            status: "success",
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText("207ms")).toBeInTheDocument();
+    expect(screen.queryByText("0.2s")).not.toBeInTheDocument();
+  });
+
+  it("omits Get Pricing from the visible step list", () => {
+    render(
+      <WorkTimeline
+        live
+        blocks={[
+          { type: "tool_use", invocationId: "p1", toolName: "get_pricing", input: {} },
+          {
+            type: "tool_result",
+            invocationId: "p1",
+            toolName: "get_pricing",
+            output: { durationMs: 100 },
+            status: "success",
+          },
+          { type: "tool_use", invocationId: "s1", toolName: "load_skill", input: { name: "image-generation" } },
+          {
+            type: "tool_result",
+            invocationId: "s1",
+            toolName: "load_skill",
+            output: { durationMs: 2000 },
+            status: "success",
+          },
+          { type: "tool_use", invocationId: "s2", toolName: "read_skill_asset", input: { name: "generate.md" } },
+          {
+            type: "tool_result",
+            invocationId: "s2",
+            toolName: "read_skill_asset",
+            output: { durationMs: 2000 },
+            status: "success",
+          },
+          { type: "tool_use", invocationId: "m1", toolName: "model_schema", input: { modelId: "gpt-image-2-text" } },
+          {
+            type: "tool_result",
+            invocationId: "m1",
+            toolName: "model_schema",
+            output: { durationMs: 2900 },
+            status: "success",
+          },
+          { type: "tool_use", invocationId: "g1", toolName: "gpt_image_2", input: { prompt: "Earth" } },
+        ]}
+      />,
+    );
+    expect(screen.getByText("Working · 4 steps")).toBeInTheDocument();
+    expect(screen.queryByText("Get Pricing")).not.toBeInTheDocument();
+    expect(screen.queryByText("get_pricing")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Skill")).toHaveLength(2);
+    expect(screen.getByText("Model schema")).toBeInTheDocument();
+    expect(screen.getByText("AI Generation")).toBeInTheDocument();
+  });
+
+  it("opens generation fields without embedding the result image", () => {
+    render(
+      <WorkTimeline
+        live
+        blocks={[
+          {
+            type: "tool_use",
+            invocationId: "g1",
+            toolName: "gpt_image_2",
+            input: { mode: "text", prompt: "A modern logo", size: "2048x2048", quality: "high" },
+          },
+          {
+            type: "tool_result",
+            invocationId: "g1",
+            toolName: "gpt_image_2",
+            output: {
+              image_url: "https://cdn.example/a.png",
+              model: "gpt-image-2-text",
+              durationMs: 2000,
+              creditUsed: 390000,
+            },
+            status: "success",
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText("AI Generation")).toBeInTheDocument();
+    expect(screen.getByText("Tool")).toBeInTheDocument();
+    expect(screen.getByText("generate")).toBeInTheDocument();
+    expect(screen.getByText("Model")).toBeInTheDocument();
+    expect(screen.getByText("gpt-image-2-text")).toBeInTheDocument();
+    expect(screen.getByText("Prompt")).toBeInTheDocument();
+    expect(screen.getByText("A modern logo")).toBeInTheDocument();
+    expect(screen.getByText("Size")).toBeInTheDocument();
+    expect(screen.getByText("2048×2048")).toBeInTheDocument();
+    expect(screen.getByText("Quality")).toBeInTheDocument();
+    expect(screen.getByText("High")).toBeInTheDocument();
+    expect(screen.getByText("2.0s")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.queryByText("View more")).not.toBeInTheDocument();
+    expect(screen.queryByText(/credits/)).not.toBeInTheDocument();
+  });
+
+  it("shows crop fields without the result image or step credits", () => {
+    render(
+      <WorkTimeline
+        live
         blocks={[
           {
             type: "tool_use",
@@ -90,13 +221,12 @@ describe("WorkTimeline", () => {
         ]}
       />,
     );
-    fireEvent.click(screen.getByText("Working · 1 step"));
-    fireEvent.click(screen.getByText("Crop Image"));
     expect(screen.getByText("Crop Image")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Generated" })).toHaveAttribute("src", "https://cdn.example/cropped.png");
-    expect(screen.queryByText(/cdn\.example/)).not.toBeInTheDocument();
     expect(screen.getByText("0, 0 · 50 × 50 percent")).toBeInTheDocument();
-    expect(screen.getByText("0.01M credits")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.queryByText(/cdn\.example/)).not.toBeInTheDocument();
+    expect(screen.queryByText("0.01M credits")).not.toBeInTheDocument();
+    expect(screen.queryByText("View more")).not.toBeInTheDocument();
   });
 
   it("summarizes merge clips instead of dumping source URLs", () => {
@@ -143,10 +273,37 @@ describe("WorkTimeline", () => {
     ];
     const { rerender } = render(<WorkTimeline live blocks={blocks} />);
     expect(screen.getByText("AI Generation")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "View more" })).toBeInTheDocument();
+    expect(screen.queryByText("View more")).not.toBeInTheDocument();
     rerender(<WorkTimeline blocks={blocks} />);
-    expect(screen.getByText("Working · 1 step")).toBeInTheDocument();
+    expect(screen.getByText("Completed 1 step")).toBeInTheDocument();
     expect(screen.queryByText("AI Generation")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "View more" })).not.toBeInTheDocument();
+  });
+
+  it("expands a finished model schema card after reopen", () => {
+    render(
+      <WorkTimeline
+        blocks={[
+          {
+            type: "tool_use",
+            invocationId: "m1",
+            toolName: "model_schema",
+            input: { modelId: "gpt-image-2-text" },
+          },
+          {
+            type: "tool_result",
+            invocationId: "m1",
+            toolName: "model_schema",
+            output: { durationMs: 2900 },
+            status: "success",
+          },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByText("Completed 1 step"));
+    fireEvent.click(screen.getByText("Model schema"));
+    expect(screen.getByText("Model ID")).toBeInTheDocument();
+    expect(screen.getByText("gpt-image-2-text")).toBeInTheDocument();
+    expect(screen.getByText("2.9s")).toBeInTheDocument();
   });
 });
