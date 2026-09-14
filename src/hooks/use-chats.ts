@@ -1,5 +1,5 @@
 import { useMutation, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createChat, deleteChat, favoriteChat, getChat, listChats, pinChat } from "@/lib/api/chats";
+import { createChat, deleteChat, favoriteChat, getChat, listChats, pinChat, renameChat } from "@/lib/api/chats";
 
 export function useChatList(q?: string) {
   return useInfiniteQuery({
@@ -39,6 +39,14 @@ export function usePinChat() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ chatId, pinned }: { chatId: string; pinned: boolean }) => pinChat(chatId, pinned),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["chats"] }),
+  });
+}
+
+export function useRenameChat() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ chatId, title }: { chatId: string; title: string }) => renameChat(chatId, title),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["chats"] }),
   });
 }

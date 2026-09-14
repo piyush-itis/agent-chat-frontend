@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AtomIcon,
+  ChevronRightIcon,
+  ChevronUpIcon,
   CirclePlusIcon,
   FolderIcon,
   LibraryIcon,
@@ -22,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { MagicaWordmark } from "./magica-mark";
 import { SidebarAccountMenu } from "./sidebar-account-menu";
+import { SidebarChatItem } from "./sidebar-chat-item";
 
 const UNAVAILABLE = "Not available in this workspace.";
 
@@ -29,7 +32,6 @@ const DEAD_NAV = [
   { label: "Projects", icon: FolderIcon },
   { label: "Library", icon: LibraryIcon },
   { label: "Tools", icon: AtomIcon },
-  { label: "API / MCP", icon: SquareTerminalIcon },
   { label: "Help & Support", icon: LifeBuoyIcon },
   { label: "Unfair Advantage", icon: SparkleIcon },
 ] as const;
@@ -44,8 +46,11 @@ export function Sidebar({ activeChatId }: { activeChatId?: string }) {
   const setSearchQuery = useUiStore((state) => state.setSearchQuery);
   const chats = useChatList(searchQuery);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [recentOpen, setRecentOpen] = useState(true);
 
-  const items = chats.data?.pages.flatMap((page) => page.items) ?? [];
+  const items = [...(chats.data?.pages.flatMap((page) => page.items) ?? [])].sort(
+    (a, b) => Number(b.pinned) - Number(a.pinned),
+  );
 
   function collapse() {
     setSidebarCollapsed(true);
@@ -135,7 +140,20 @@ export function Sidebar({ activeChatId }: { activeChatId?: string }) {
           <RailButton
             icon={<MessageCircleIcon className="size-[18px]" strokeWidth={1.75} />}
             label="Tasks"
-            onClick={() => closeSearch()}
+            href="/tasks"
+            onClick={() => {
+              closeSearch();
+              setSidebarOpen(false);
+            }}
+          />
+          <RailButton
+            icon={<SquareTerminalIcon className="size-[18px]" strokeWidth={1.75} />}
+            label="API / MCP"
+            onClick={() => {
+              closeSearch();
+              setSidebarOpen(false);
+              router.push("/developers");
+            }}
           />
           {DEAD_NAV.map((item) => (
             <RailButton
@@ -146,31 +164,51 @@ export function Sidebar({ activeChatId }: { activeChatId?: string }) {
             />
           ))}
 
-          <p className="mt-6 px-1 text-[13px] text-muted-foreground">Recent tasks</p>
-          <div className="mt-2 min-h-0 flex-1 overflow-y-auto pb-3">
-            {items.length === 0 ? (
-              <p className="px-1 pt-4 text-[13px] text-muted-foreground">No tasks yet</p>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {items.map((chat) => (
-                  <li key={chat.id}>
-                    <Link
-                      href={`/c/${chat.id}`}
-                      className={cn(
-                        "block truncate rounded-full px-4 py-2.5 text-[15px] text-sidebar-foreground",
-                        activeChatId === chat.id ? "bg-sidebar-accent" : "hover:bg-sidebar-accent",
-                      )}
-                      onClick={() => {
+          <div className="mt-3 flex h-9 items-center justify-between rounded-xl bg-card px-3.5 text-[13px] text-muted-foreground shadow-[0_6px_18px_rgba(17,17,17,0.06)] ring-1 ring-border">
+            <button
+              type="button"
+              aria-expanded={recentOpen}
+              className="flex items-center gap-1 rounded-lg py-1 transition-colors hover:text-foreground"
+              onClick={() => setRecentOpen((open) => !open)}
+            >
+              Recent tasks
+              <ChevronUpIcon
+                className={cn("size-3.5 transition-transform", !recentOpen && "rotate-180")}
+                strokeWidth={1.75}
+              />
+            </button>
+            <Link
+              href="/tasks"
+              className="flex items-center gap-0.5 py-1 transition-colors hover:text-foreground"
+              onClick={() => {
+                closeSearch();
+                setSidebarOpen(false);
+              }}
+            >
+              View all
+              <ChevronRightIcon className="size-3.5" strokeWidth={1.75} />
+            </Link>
+          </div>
+          <div className="mt-1 min-h-0 flex-1 overflow-y-auto pb-3">
+            {recentOpen ? (
+              items.length === 0 ? (
+                <p className="px-3.5 pt-3 text-[13px] text-muted-foreground">No tasks yet</p>
+              ) : (
+                <ul>
+                  {items.map((chat) => (
+                    <SidebarChatItem
+                      key={chat.id}
+                      chat={chat}
+                      active={activeChatId === chat.id}
+                      onNavigate={() => {
                         closeSearch();
                         setSidebarOpen(false);
                       }}
-                    >
-                      {chat.title}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
+                    />
+                  ))}
+                </ul>
+              )
+            ) : null}
           </div>
         </nav>
 
@@ -184,19 +222,31 @@ function RailButton({
   icon,
   label,
   onClick,
+  href,
 }: {
   icon: ReactNode;
   label: string;
-  onClick: () => void;
+  onClick?: () => void;
+  href?: string;
 }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-xl px-1 py-2.5 text-left text-[15px] text-sidebar-foreground hover:bg-sidebar-accent"
-    >
+  const className =
+    "flex w-full items-center gap-3 rounded-xl px-1 py-2.5 text-left text-[15px] text-sidebar-foreground hover:bg-sidebar-accent";
+  const content = (
+    <>
       <span className="text-muted-foreground">{icon}</span>
       {label}
+    </>
+  );
+  if (href) {
+    return (
+      <Link href={href} className={className} onClick={onClick}>
+        {content}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} className={className}>
+      {content}
     </button>
   );
 }

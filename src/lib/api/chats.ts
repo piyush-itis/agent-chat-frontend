@@ -34,6 +34,13 @@ export function pinChat(chatId: string, pinned: boolean) {
   });
 }
 
+export function renameChat(chatId: string, title: string) {
+  return apiFetch<Chat>(`/api/chats/${chatId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  });
+}
+
 export function deleteChat(chatId: string) {
   return apiFetch<{ ok: true }>(`/api/chats/${chatId}`, { method: "DELETE" });
 }
